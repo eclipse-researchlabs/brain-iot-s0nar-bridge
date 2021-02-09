@@ -331,7 +331,7 @@ Bundle-SymbolicName: ${project.groupId}.${project.artifactId}
         <module>receiver.impl</module>
 	    <module>emitter.api</module>
 	    <module>emitter.impl</module>
-    <module>behaviour-demo.impl</module>
-    <module>single-framework-demo</module>
+	    <module>s0nar-bridge.impl</module>
+	    <module>single-framework-demo</module>
   </modules>
 </project>

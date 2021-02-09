@@ -36,7 +36,12 @@ public class RestComponentImpl {
     @Path("sica")
     @POST
     public void triggerSica() {
-        eventBus.deliver(new SicaReadResponse());
+    	SicaReadResponse sicaRead = new SicaReadResponse();
+//    	sicaRead.timestamp = System.currentTimeMillis();
+    	sicaRead.timestamp = 1609339271000l;
+    	sicaRead.value = new double[]{2.282772,1.612903,0.5173611,0.4566743};
+    	
+        eventBus.deliver(sicaRead);
     }
     
 }

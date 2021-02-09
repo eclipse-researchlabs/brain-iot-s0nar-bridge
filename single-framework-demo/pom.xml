@@ -71,7 +71,7 @@
         </dependency>
         <dependency>
             <groupId>com.improvingmetrics.brain.iot.demo</groupId>
-            <artifactId>behaviour-demo.impl</artifactId>
+            <artifactId>s0nar-bridge.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>
