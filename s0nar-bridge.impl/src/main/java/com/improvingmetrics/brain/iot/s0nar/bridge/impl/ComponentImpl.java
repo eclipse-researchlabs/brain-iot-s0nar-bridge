@@ -1,30 +1,32 @@
 package com.improvingmetrics.brain.iot.s0nar.bridge.impl;
 
-import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
+import org.apache.http.ParseException;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPatch;
-import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.mime.HttpMultipartMode;
-import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.ByteArrayBuffer;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Modified;
+import org.osgi.service.metatype.annotations.AttributeDefinition;
+import org.osgi.service.metatype.annotations.AttributeType;
+import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
+import com.google.gson.JsonSyntaxException;
 import com.improvingmetrics.brain.iot.demo.emitter.api.EmitterMessageDTO;
 
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
@@ -41,14 +43,67 @@ import fr.cea.brain.iot.sensinact.api.sica.SicaReadResponse;
         description = "Serves as a bridge between event bus communicatiosn and sOnar server"
 )
 public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
-	
 	private static final Logger LOG = Logger.getLogger(ComponentImpl.class.getName());
 	private final Map<String, String> SERVER_TO_DS_MAP = new HashMap<String, String>();
-	private final String s0narApiUrl = "http://localhost:5004/s0nar/v1";
-	private final String API_KEY = "b5ea8e13f10d46c9ae33b392bb6d74de9c24e3a91fe44bb";
+	
+	private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
+	
+	private Config config;
+	
+	private S0narService s0narService;
+	
+	private long lastAnomalyNotificationTS = 0l;
+	
+	@ObjectClassDefinition(
+            name = "s0nar bridge",
+            description = "Configuration for the s0nar bridge."
+    )
+    @interface Config {
+    
+        @AttributeDefinition(
+    		type = AttributeType.STRING,
+            name = "s0nar API URL",
+            description = "The base URL for the s0nar API"
+        )
+        String s0narApiUrl() default "http://localhost:5004/s0nar/v1";
+
+        @AttributeDefinition(
+    		type = AttributeType.STRING,
+            name = "s0nar API key",
+            description = "The key to authenticate s0nar API calls"
+        )
+        String s0narApiKey() default "b5ea8e13f10d46c9ae33b392bb6d74de9c24e3a91fe44bb";
+    }
 	
 	public ComponentImpl() {
-		SERVER_TO_DS_MAP.put("cft002", "dfdb45de-8712-4a66-ba58-b5d72ac3d8c4");
+//		SERVER_TO_DS_MAP.put("cft002", "6797cddc-a9ed-4768-b4a0-8a49340a6eb2");
+		SERVER_TO_DS_MAP.put("cft002", "5f9eec49-f2a8-446c-b42d-6939354231e0");
+	}
+	
+	@Activate
+	void activate(Config config) {
+		LOG.info("S0nar bridge activated");			
+	    this.config = config;
+	    
+	    this.s0narService = new S0narService(
+    		this.config.s0narApiUrl(),
+    		this.config.s0narApiKey()
+		);
+    }
+
+    @Modified
+    void modify(Config config) {
+        this.config = config;
+        
+        this.s0narService = new S0narService(
+    		this.config.s0narApiUrl(),
+    		this.config.s0narApiKey()
+		);
+    }
+
+	@Deactivate
+	void stop() {
+		worker.shutdown();
 	}
 	
 	@Override
@@ -78,9 +133,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		LOG.info("Digesting SicaReadResponse " + sicaRead);
 		
 		try {
-//			File datasetFile = this.createSicaDatasetFile(sicaRead);
-//			
-//			this.uploadDatasetFile(datasetFile);
 			this.uploadSicaRead(sicaRead);
 		} catch (Exception e) {
 			LOG.severe(e.toString());
@@ -92,47 +144,32 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	}
 	
 	private void uploadSicaRead(SicaReadResponse sicaRead) throws ClientProtocolException, IOException {
-		String dataSetId = getDataSetIdForSicaRead("cft002");
+		String feature = "cft002";
+		
+		String dataSetId = getDataSetIdForSicaRead(feature);
 		
 		boolean dataSetUploaded = false;
 		
 		if (dataSetId == null) {
-			dataSetUploaded = this.createDataSet(sicaRead);
+			dataSetUploaded = this.s0narService.createDataSet(
+				this.parseEvent(sicaRead, true),
+				feature
+			);
 		} else {
-			dataSetUploaded = this.updateDataSet(sicaRead, dataSetId);
+			dataSetUploaded = this.s0narService.updateDataSet(
+				this.parseEvent(sicaRead, false),
+				feature,
+				dataSetId
+			);
 		}
 		
 		if (dataSetUploaded) {
+			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSetId, feature);
 			
+			if (this.s0narService.trainModel(modelId)) {
+				this.notifyWhenModelTrained(modelId);
+			}
 		}
-	}
-	
-	private boolean createDataSet(SicaReadResponse sicaRead) throws ClientProtocolException, IOException {
-		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-		
-		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
-		
-//		entityBuilder.addTextBody("clave", "valor");
-		
-		entityBuilder.addBinaryBody(
-			"dataset",
-			new ByteArrayInputStream(this.parseEvent(sicaRead, true)),
-			ContentType.DEFAULT_BINARY,
-			"temporaryfilename"
-		);
-		
-		CloseableHttpClient client = HttpClients.createDefault();
-		
-		HttpEntityEnclosingRequestBase request = null;
-		
-		request = new HttpPost(this.s0narApiUrl + "/dataset");
-		request.setEntity(entityBuilder.build());
-		
-		HttpResponse response = client.execute(request);
-		
-		LOG.info(response.toString());
-		
-		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
 	}
 	
 	private byte[] parseEvent(SicaReadResponse sicaRead, boolean appendHeader) {
@@ -143,7 +180,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 			stringBuilder.append(System.lineSeparator());
 		}
 		
-		stringBuilder.append(sicaRead.timestamp);
+		stringBuilder.append(convertMilisToSchema(sicaRead.timestamp));
 		
 		for (double entry : sicaRead.value) {
 			stringBuilder.append(",");
@@ -155,43 +192,63 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		return stringBuilder.toString().getBytes();
 	}
 	
-	private boolean updateDataSet(SicaReadResponse sicaRead, String dataSetId) throws ClientProtocolException, IOException {
-		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
-		
-		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
-		
-		entityBuilder.addTextBody("name", "thename");
-		entityBuilder.addTextBody("target_index", "date");
-		entityBuilder.addTextBody("target_feature", "thename");
-		entityBuilder.addTextBody("name", "cft002");
-		entityBuilder.addTextBody("target_frequency", "10s");
-		entityBuilder.addTextBody("index_schema", "%Y-%m-%d %H:%M:%S");
-		entityBuilder.addTextBody("index_frequency", "10S");
-				
-		entityBuilder.addBinaryBody(
-			"dataset",
-			new ByteArrayInputStream(this.parseEvent(sicaRead, false)),
-			ContentType.DEFAULT_BINARY,
-			"temporaryfilename"
+	private String convertMilisToSchema(long milis) {
+		OffsetDateTime dateTime = OffsetDateTime.ofInstant(
+			Instant.ofEpochMilli(milis),
+			ZoneOffset.UTC
 		);
 		
-		CloseableHttpClient client = HttpClients.createDefault();
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss");
 		
-		HttpEntityEnclosingRequestBase request = null;
+		LOG.info("date:" + dateTime.format(formatter));
 		
-		request = new HttpPatch(this.s0narApiUrl + "/dataset/" + dataSetId);
-		request.setHeader("x-api-key", API_KEY);
-		request.setEntity(entityBuilder.build());
-		
-		HttpResponse response = client.execute(request);
-		
-		LOG.info(response.toString());
-		
-		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
-		
+		return dateTime.format(formatter);
 	}
 	
-	private void createModel() {
+	private void notifyWhenModelTrained(String modelId) throws JsonSyntaxException, ParseException, IOException {
+		ModelDTO modelDetails = this.s0narService.getModelDetails(modelId);
 		
+		LOG.info("Training status: " + modelDetails.status);
+		
+		if (modelDetails.status == ModelStatus.TRAINING) {
+			worker.schedule(() -> {
+				try {
+					notifyWhenModelTrained(modelId);
+				} catch (Exception e) {
+					throw new RuntimeException();
+				}
+			}, 30, TimeUnit.SECONDS);
+		} else {
+			LOG.info("Model " + modelId + " training has finished");
+			
+			AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
+			
+			this.showAnomalies(anomaliesReport);
+			
+			this.notifySicaAnomalies(anomaliesReport);
+		}
+	}
+	
+	private void showAnomalies(AnomaliesReportDTO anomaliesReport) throws ClientProtocolException, IOException {
+		LOG.info("Detected anomalies:");
+		for (AnomalyDTO anomaly : anomaliesReport.anomalies) {
+			LOG.info(anomaly.toString());
+		}
+	}
+	
+	private void notifySicaAnomalies(AnomaliesReportDTO anomaliesReport) {
+		for (AnomalyDTO anomaly : anomaliesReport.anomalies) {
+			if (anomaly.timestamp > this.lastAnomalyNotificationTS) {
+				this.notifySicaAnomaly(anomaly);
+				
+				this.lastAnomalyNotificationTS = anomaly.timestamp;
+			}
+		}
+	}
+	
+	private void notifySicaAnomaly(AnomalyDTO anomaly) {
+		LOG.info("Notifying anomaly: " + anomaly);
+		
+		// TODO: Notify through event bus
 	}
 }
