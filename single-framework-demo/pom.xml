@@ -2,14 +2,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-    <artifactId>sb-demo</artifactId>
-    <groupId>com.improvingmetrics.brain.iot.demo</groupId>
-    <version>0.0.1-SNAPSHOT</version>
-  </parent>
+		<artifactId>s0nar-bridge</artifactId>
+		<groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
+		<version>0.0.1-SNAPSHOT</version>
+	</parent>
 
-    <groupId>com.improvingmetrics.brain.iot.demo</groupId>
     <artifactId>single-framework-demo</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
 
     <description>The single-framework-demo application packaging project - using OSGi enRoute R7</description>
 
@@ -17,7 +15,6 @@
         <dependency>
             <groupId>org.apache.aries.jax.rs</groupId>
             <artifactId>org.apache.aries.jax.rs.jackson</artifactId>
-            <version>1.0.2</version>
             <scope>runtime</scope>
         </dependency>
 <!--         <dependency> -->
@@ -57,24 +54,24 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.improvingmetrics.brain.iot.demo</groupId>
+            <groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
             <artifactId>receiver.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.improvingmetrics.brain.iot.demo</groupId>
+            <groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
             <artifactId>receiver.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.improvingmetrics.brain.iot.demo</groupId>
+            <groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
             <artifactId>emitter.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.improvingmetrics.brain.iot.demo</groupId>
+            <groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
             <artifactId>s0nar-bridge.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>

@@ -1,5 +1,5 @@
 -runrequires: \
-	bnd.identity;id='com.improvingmetrics.brain.iot.demo.emitter.impl',\
+	bnd.identity;id='com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl',\
 	bnd.identity;id='org.apache.aries.jax.rs.jackson'
 	
 -runfw: org.eclipse.osgi
@@ -17,8 +17,6 @@
 	com.fasterxml.jackson.jaxrs.jackson-jaxrs-base;version='[2.9.6,2.9.7)',\
 	com.fasterxml.jackson.jaxrs.jackson-jaxrs-json-provider;version='[2.9.6,2.9.7)',\
 	com.fasterxml.jackson.module.jackson-module-jaxb-annotations;version='[2.9.6,2.9.7)',\
-	com.improvingmetrics.brain.iot.demo.emitter.api;version='[0.0.1,0.0.2)',\
-	com.improvingmetrics.brain.iot.demo.emitter.impl;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.eventing.api;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.eventing.impl;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.message.integrity.api;version='[0.0.1,0.0.2)',\
@@ -37,4 +35,6 @@
 	org.osgi.util.pushstream;version='[1.0.0,1.0.1)',\
 	slf4j.api;version='[1.7.25,1.7.26)',\
 	fr.cea.brain.iot.sensinact-smart-behaviour-api;version='[1.0.0,1.0.1)',\
-	fr.cea.brain.iot.sica-smart-behaviour-api;version='[1.0.0,1.0.1)'
+	fr.cea.brain.iot.sica-smart-behaviour-api;version='[1.0.0,1.0.1)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl;version='[0.0.1,0.0.2)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.api;version='[0.0.1,0.0.2)'

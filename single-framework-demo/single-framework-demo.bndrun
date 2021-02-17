@@ -3,9 +3,9 @@ index: target/index.xml;name="single-framework-demo"
 -standalone: ${index}
 
 -runrequires: \
-	osgi.identity;filter:='(osgi.identity=com.improvingmetrics.brain.iot.demo.s0nar-bridge.impl)',\
-	bnd.identity;id='com.improvingmetrics.brain.iot.demo.receiver.impl',\
-	bnd.identity;id='com.improvingmetrics.brain.iot.demo.emitter.impl',\
+	osgi.identity;filter:='(osgi.identity=com.improvingmetrics.brain.iot.s0nar.bridge.s0nar-bridge.impl)',\
+	bnd.identity;id='com.improvingmetrics.brain.iot.s0nar.bridge.receiver.impl',\
+	bnd.identity;id='com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl',\
 	bnd.identity;id='org.apache.aries.jax.rs.jackson',\
 	bnd.identity;id='com.google.gson'
 -runfw: org.eclipse.osgi
@@ -21,10 +21,7 @@ index: target/index.xml;name="single-framework-demo"
 	com.fasterxml.jackson.jaxrs.jackson-jaxrs-base;version='[2.9.6,2.9.7)',\
 	com.fasterxml.jackson.jaxrs.jackson-jaxrs-json-provider;version='[2.9.6,2.9.7)',\
 	com.fasterxml.jackson.module.jackson-module-jaxb-annotations;version='[2.9.6,2.9.7)',\
-	com.improvingmetrics.brain.iot.demo.emitter.api;version='[0.0.1,0.0.2)',\
-	com.improvingmetrics.brain.iot.demo.emitter.impl;version='[0.0.1,0.0.2)',\
 	com.improvingmetrics.brain.iot.demo.receiver.api;version='[0.0.1,0.0.2)',\
-	com.improvingmetrics.brain.iot.demo.receiver.impl;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.eventing.api;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.eventing.impl;version='[0.0.1,0.0.2)',\
 	com.paremus.brain.iot.message.integrity.api;version='[0.0.1,0.0.2)',\
@@ -47,5 +44,8 @@ index: target/index.xml;name="single-framework-demo"
 	org.apache.httpcomponents.httpcore;version='[4.4.1,4.4.2)',\
 	fr.cea.brain.iot.sensinact-smart-behaviour-api;version='[1.0.0,1.0.1)',\
 	fr.cea.brain.iot.sica-smart-behaviour-api;version='[1.0.0,1.0.1)',\
-	com.improvingmetrics.brain.iot.demo.s0nar-bridge.impl;version='[0.0.1,0.0.2)',\
-	com.google.gson;version='[2.7.0,2.7.1)'
+	com.google.gson;version='[2.7.0,2.7.1)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.api;version='[0.0.1,0.0.2)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl;version='[0.0.1,0.0.2)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.receiver.impl;version='[0.0.1,0.0.2)',\
+	com.improvingmetrics.brain.iot.s0nar.bridge.s0nar-bridge.impl;version='[0.0.1,0.0.2)'

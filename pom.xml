@@ -2,12 +2,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.improvingmetrics.brain.iot.demo</groupId>
-    <artifactId>sb-demo</artifactId>
+    <groupId>com.improvingmetrics.brain.iot.s0nar.bridge</groupId>
+    <artifactId>s0nar-bridge</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <description>The sb-demo application - built using OSGi enRoute R7</description>
+    <description>The s0nar bridge application - built using OSGi enRoute R7</description>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
