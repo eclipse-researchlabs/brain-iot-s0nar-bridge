@@ -24,6 +24,7 @@ import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.AttributeType;
+import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
 import com.google.gson.JsonSyntaxException;
@@ -42,6 +43,7 @@ import fr.cea.brain.iot.sensinact.api.sica.SicaReadResponse;
         name = "s0nar-bridge Behaviour",
         description = "Serves as a bridge between event bus communicatiosn and sOnar server"
 )
+@Designate(ocd = ComponentImpl.Config.class)
 public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	private static final Logger LOG = Logger.getLogger(ComponentImpl.class.getName());
 	private final Map<String, String> SERVER_TO_DS_MAP = new HashMap<String, String>();
@@ -59,7 +61,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
             description = "Configuration for the s0nar bridge."
     )
     @interface Config {
-    
         @AttributeDefinition(
     		type = AttributeType.STRING,
             name = "s0nar API URL",
@@ -77,7 +78,10 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	
 	public ComponentImpl() {
 //		SERVER_TO_DS_MAP.put("cft002", "6797cddc-a9ed-4768-b4a0-8a49340a6eb2");
-		SERVER_TO_DS_MAP.put("cft002", "5f9eec49-f2a8-446c-b42d-6939354231e0");
+		
+//		SERVER_TO_DS_MAP.put("cft002", "5f9eec49-f2a8-446c-b42d-6939354231e0");
+		
+		
 	}
 	
 	@Activate
@@ -148,22 +152,22 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 		String dataSetId = getDataSetIdForSicaRead(feature);
 		
-		boolean dataSetUploaded = false;
-		
 		if (dataSetId == null) {
-			dataSetUploaded = this.s0narService.createDataSet(
+			dataSetId = this.s0narService.createDataSet(
 				this.parseEvent(sicaRead, true),
 				feature
 			);
+			
+			SERVER_TO_DS_MAP.put(feature, dataSetId);
 		} else {
-			dataSetUploaded = this.s0narService.updateDataSet(
+			dataSetId = this.s0narService.updateDataSet(
 				this.parseEvent(sicaRead, false),
 				feature,
 				dataSetId
 			);
 		}
 		
-		if (dataSetUploaded) {
+		if (dataSetId != null) {
 			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSetId, feature);
 			
 			if (this.s0narService.trainModel(modelId)) {
@@ -208,16 +212,16 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	private void notifyWhenModelTrained(String modelId) throws JsonSyntaxException, ParseException, IOException {
 		ModelDTO modelDetails = this.s0narService.getModelDetails(modelId);
 		
-		LOG.info("Training status: " + modelDetails.status);
+		LOG.info("Training status: " + modelDetails.getStatus());
 		
-		if (modelDetails.status == ModelStatus.TRAINING) {
+		if (modelDetails.getStatus() == ModelStatus.TRAINING) {
 			worker.schedule(() -> {
 				try {
 					notifyWhenModelTrained(modelId);
 				} catch (Exception e) {
 					throw new RuntimeException();
 				}
-			}, 30, TimeUnit.SECONDS);
+			}, 10, TimeUnit.SECONDS);
 		} else {
 			LOG.info("Model " + modelId + " training has finished");
 			
@@ -231,17 +235,17 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	
 	private void showAnomalies(AnomaliesReportDTO anomaliesReport) throws ClientProtocolException, IOException {
 		LOG.info("Detected anomalies:");
-		for (AnomalyDTO anomaly : anomaliesReport.anomalies) {
+		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
 			LOG.info(anomaly.toString());
 		}
 	}
 	
 	private void notifySicaAnomalies(AnomaliesReportDTO anomaliesReport) {
-		for (AnomalyDTO anomaly : anomaliesReport.anomalies) {
-			if (anomaly.timestamp > this.lastAnomalyNotificationTS) {
+		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
+			if (anomaly.getTimestamp() > this.lastAnomalyNotificationTS) {
 				this.notifySicaAnomaly(anomaly);
 				
-				this.lastAnomalyNotificationTS = anomaly.timestamp;
+				this.lastAnomalyNotificationTS = anomaly.getTimestamp();
 			}
 		}
 	}

@@ -2,15 +2,32 @@ package com.improvingmetrics.brain.iot.s0nar.bridge.impl;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalField;
 
-public class AnomalyDTO {
-	public String feature;
-	public double value;
+import org.osgi.dto.DTO;
+
+public class AnomalyDTO extends DTO {
+	private String feature;
+	private double value;
 	private String date;
-	public long timestamp;
-	public double distance;
+	private long timestamp;
+	private double distance;
 	
+	public String getFeature() {
+		return feature;
+	}
+
+	public void setFeature(String feature) {
+		this.feature = feature;
+	}
+
+	public double getValue() {
+		return value;
+	}
+
+	public void setValue(double value) {
+		this.value = value;
+	}
+
 	public void setDate(String date) {
 		this.date = date;
 		
@@ -24,23 +41,19 @@ public class AnomalyDTO {
 		return this.date;
 	}
 	
-	@Override
-	public String toString() {
-		StringBuilder strBuilder = new StringBuilder();
-		
-		return strBuilder
-			.append("<")
-			.append("feature: ")
-			.append(this.feature)
-			.append(", value: ")
-			.append(this.value)
-			.append(", date: ")
-			.append(this.date)
-			.append(", timestamp: ")
-			.append(this.timestamp)
-			.append(", distance: ")
-			.append(this.distance)
-			.append(">")
-			.toString();
+	public long getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(long timestamp) {
+		this.timestamp = timestamp;
+	}
+
+	public double getDistance() {
+		return distance;
+	}
+
+	public void setDistance(double distance) {
+		this.distance = distance;
 	}
 }

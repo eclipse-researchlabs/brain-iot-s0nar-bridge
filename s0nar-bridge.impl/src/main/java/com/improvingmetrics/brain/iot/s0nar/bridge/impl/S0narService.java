@@ -44,7 +44,7 @@ public class S0narService {
 		this.apiKey = apiKey;
 	}
 	
-	public boolean createDataSet(byte[] dataSetData, String feature) throws ClientProtocolException, IOException {
+	public String createDataSet(byte[] dataSetData, String feature) throws ClientProtocolException, IOException {
 		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
 		
 		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
@@ -52,7 +52,7 @@ public class S0narService {
 		entityBuilder.addTextBody("name", "thename");
 		entityBuilder.addTextBody("target_index", "date");
 		entityBuilder.addTextBody("target_feature", feature);
-		entityBuilder.addTextBody("name", "cft002");
+		entityBuilder.addTextBody("name", feature);
 		entityBuilder.addTextBody("target_frequency", "10s");
 		entityBuilder.addTextBody("index_schema", "%Y-%m-%d %H:%M:%S");
 		entityBuilder.addTextBody("index_frequency", "10S");
@@ -73,12 +73,23 @@ public class S0narService {
 		
 		HttpResponse response = client.execute(request);
 		
-		LOG.info(response.toString());
-		
-		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
+		if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+			LOG.info(response.toString());
+			
+			Gson gson = new Gson();
+			
+			DataSetDTO dataSet = gson.fromJson(
+				EntityUtils.toString(response.getEntity()),
+				DataSetDTO.class
+			);
+			
+			return dataSet.getId();
+		} else {
+			return null;
+		}
 	}
 	
-	public boolean updateDataSet(byte[] dataSetData, String feature, String dataSetId) throws ClientProtocolException, IOException {
+	public String updateDataSet(byte[] dataSetData, String feature, String dataSetId) throws ClientProtocolException, IOException {
 		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
 		
 		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
@@ -100,9 +111,20 @@ public class S0narService {
 		
 		HttpResponse response = client.execute(request);
 		
-		LOG.info(response.toString());
-		
-		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
+		if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+			LOG.info(response.toString());
+			
+			Gson gson = new Gson();
+			
+			DataSetDTO dataSet = gson.fromJson(
+				EntityUtils.toString(response.getEntity()),
+				DataSetDTO.class
+			);
+			
+			return dataSet.getId();
+		} else {
+			return null;
+		}
 	}
 	
 	public String createModel(ModelType modelType, String dataSetId, String feature) throws ClientProtocolException, IOException {
@@ -114,7 +136,7 @@ public class S0narService {
 	}
 	
 	private String createArimaModel(String dataSetId, String feature) throws ClientProtocolException, IOException {
-		CreateModelBody createModelBody = new CreateModelBody();
+		CreateModelBodyDTO createModelBody = new CreateModelBodyDTO();
 		createModelBody.type = ModelType.ARIMA;
 		createModelBody.index = "date";
 		createModelBody.indexSchema = "%Y-%m-%d %H:%M:%S";
@@ -146,9 +168,9 @@ public class S0narService {
 			ModelDTO.class
 		);
 		
-		LOG.info(createModelResponse.id);
+		LOG.info(createModelResponse.getId());
 		
-		return createModelResponse.id;
+		return createModelResponse.getId();
 		
 //		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
 	}
@@ -231,7 +253,7 @@ public class S0narService {
 			anomaly.setDate(anomalyJson.get("date").getAsString());
 			anomalyJson.remove("date");
 			
-			anomaly.distance = anomalyJson.get("distance").getAsDouble();
+			anomaly.setDistance(anomalyJson.get("distance").getAsDouble());
 			anomalyJson.remove("distance");
 			
 			Set<Entry<String, JsonElement>> otherPropertiesSet = anomalyJson.entrySet();
@@ -240,8 +262,8 @@ public class S0narService {
 			
 			LOG.fine(otherPropertiesSet.size() + " left to manage: " + firstUnparsedEntry);
 			
-			anomaly.feature = firstUnparsedEntry.getKey();
-			anomaly.value = firstUnparsedEntry.getValue().getAsDouble();
+			anomaly.setFeature(firstUnparsedEntry.getKey());
+			anomaly.setValue(firstUnparsedEntry.getValue().getAsDouble());
 			
 			LOG.fine("Parsed anomaly: " + anomaly);
 			

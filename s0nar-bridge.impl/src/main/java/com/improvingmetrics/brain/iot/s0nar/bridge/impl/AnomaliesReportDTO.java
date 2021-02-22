@@ -2,23 +2,51 @@ package com.improvingmetrics.brain.iot.s0nar.bridge.impl;
 
 import java.util.List;
 
+import org.osgi.dto.DTO;
+
 import com.google.gson.annotations.SerializedName;
 
-public class AnomaliesReportDTO {
+public class AnomaliesReportDTO extends DTO {
 	@SerializedName(value = "_id")
-	public String id;
+	private String id;
 	
 	@SerializedName(value = "creation_date")
-	public String creationDate;
+	private String creationDate;
 	
 	@SerializedName(value = "model")
-	public String modelId;
+	private String modelId;
 	
-//	public ParametersDTO params;
-	
-	public List<AnomalyDTO> anomalies;
-	
-//	public class ParametersDTO {
-//		public double threshold;
-//	}
+	private List<AnomalyDTO> anomalies;
+
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public String getCreationDate() {
+		return creationDate;
+	}
+
+	public void setCreationDate(String creationDate) {
+		this.creationDate = creationDate;
+	}
+
+	public String getModelId() {
+		return modelId;
+	}
+
+	public void setModelId(String modelId) {
+		this.modelId = modelId;
+	}
+
+	public List<AnomalyDTO> getAnomalies() {
+		return anomalies;
+	}
+
+	public void setAnomalies(List<AnomalyDTO> anomalies) {
+		this.anomalies = anomalies;
+	}
 }

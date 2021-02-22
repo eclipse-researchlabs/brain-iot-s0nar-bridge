@@ -1,8 +1,10 @@
 package com.improvingmetrics.brain.iot.s0nar.bridge.impl;
 
+import org.osgi.dto.DTO;
+
 import com.google.gson.annotations.SerializedName;
 
-public class CreateModelBody {
+public class CreateModelBodyDTO extends DTO {
 	public class HyperParameters {
 		@SerializedName(value = "min_elements")
 		public String minElements; 

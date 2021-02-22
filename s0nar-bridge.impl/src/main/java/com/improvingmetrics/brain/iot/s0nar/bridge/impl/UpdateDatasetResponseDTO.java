@@ -1,8 +1,10 @@
 package com.improvingmetrics.brain.iot.s0nar.bridge.impl;
 
+import org.osgi.dto.DTO;
+
 import com.google.gson.annotations.SerializedName;
 
-public class UpdateDatasetResponseDTO {
+public class UpdateDatasetResponseDTO extends DTO {
 	@SerializedName(value = "_id")
 	public String id;
 	
