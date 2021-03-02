@@ -185,6 +185,18 @@
 				<version>1.0-SNAPSHOT</version>
 <!--                 <scope>provided</scope> -->
 			</dependency>
+			<dependency>
+				<groupId>org.eclipse.sensinact.brainiot.medusa</groupId>
+				<artifactId>simulator-api</artifactId>
+				<version>1.0-SNAPSHOT</version>
+                <scope>provided</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.eclipse.sensinact.brainiot.medusa</groupId>
+				<artifactId>critical-water-infrastructure-api</artifactId>
+				<version>1.0-SNAPSHOT</version>
+<!--                 <scope>provided</scope> -->
+			</dependency>
         </dependencies>
     </dependencyManagement>
 

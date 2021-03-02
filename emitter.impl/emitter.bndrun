@@ -37,4 +37,5 @@
 	fr.cea.brain.iot.sensinact-smart-behaviour-api;version='[1.0.0,1.0.1)',\
 	fr.cea.brain.iot.sica-smart-behaviour-api;version='[1.0.0,1.0.1)',\
 	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl;version='[0.0.1,0.0.2)',\
-	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.api;version='[0.0.1,0.0.2)'
+	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.api;version='[0.0.1,0.0.2)',\
+	org.eclipse.sensinact.brainiot.medusa.critical-water-infrastructure-api;version='[1.0.0,1.0.1)'
