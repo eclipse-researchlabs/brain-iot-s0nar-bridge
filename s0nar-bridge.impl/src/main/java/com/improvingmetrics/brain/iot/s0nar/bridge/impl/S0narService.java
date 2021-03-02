@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.http.HttpResponse;
@@ -22,6 +23,7 @@ import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.omg.CORBA.TypeCodeHolder;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -89,7 +91,56 @@ public class S0narService {
 		}
 	}
 	
-	public String updateDataSet(byte[] dataSetData, String feature, String dataSetId) throws ClientProtocolException, IOException {
+	public String createDataSet(
+		DataSetDTO dataSetDTO,
+		byte[] dataSetData
+	) throws ClientProtocolException, IOException {
+		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
+		
+		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
+		
+		entityBuilder.addTextBody("name", dataSetDTO.getName());
+		entityBuilder.addTextBody("target_index", dataSetDTO.getDescriptors().getIndex());
+		if (dataSetDTO.getDescriptors().getIndexSchema() != null) {
+			entityBuilder.addTextBody("index_schema", dataSetDTO.getDescriptors().getIndexSchema());
+		}
+		entityBuilder.addTextBody("index_frequency", dataSetDTO.getDescriptors().getIndexFrequency());
+		entityBuilder.addTextBody("target_feature", dataSetDTO.getDescriptors().getTargetFeature());
+		entityBuilder.addTextBody("target_frequency", dataSetDTO.getDescriptors().getTargetFrequency());
+		
+		entityBuilder.addBinaryBody(
+			"dataset",
+			new ByteArrayInputStream(dataSetData),
+			ContentType.DEFAULT_BINARY,
+			dataSetDTO.getName()
+		);
+		
+		CloseableHttpClient client = HttpClients.createDefault();
+		
+		HttpEntityEnclosingRequestBase request = null;
+		
+		request = new HttpPost(this.apiUrl + "/dataset");
+		request.setEntity(entityBuilder.build());
+		
+		HttpResponse response = client.execute(request);
+		
+		if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+			LOG.info(response.toString());
+			
+			Gson gson = new Gson();
+			
+			DataSetDTO dataSet = gson.fromJson(
+				EntityUtils.toString(response.getEntity()),
+				DataSetDTO.class
+			);
+			
+			return dataSet.getId();
+		} else {
+			return null;
+		}
+	}
+	
+	public String updateDataSet(String dataSetId, byte[] dataSetData) throws ClientProtocolException, IOException {
 		MultipartEntityBuilder entityBuilder = MultipartEntityBuilder.create();
 		
 		entityBuilder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
@@ -127,9 +178,39 @@ public class S0narService {
 		}
 	}
 	
+	public DataSetDTO getDataSet(String dataSetId) throws JsonSyntaxException, ParseException, IOException {
+		CloseableHttpClient client = HttpClients.createDefault();
+		
+		HttpGet request = null;
+		
+		request = new HttpGet(this.apiUrl + "/dataset/" + dataSetId + "/details");
+		request.setHeader("x-api-key", apiKey);
+		
+		HttpResponse response = client.execute(request);
+		
+		LOG.info(response.toString());
+		
+		Gson gson = new Gson();
+		
+		DataSetDTO dataSetDetails = gson.fromJson(
+			EntityUtils.toString(response.getEntity()),
+			DataSetDTO.class
+		);
+		
+		return dataSetDetails;
+	}
+	
 	public String createModel(ModelType modelType, String dataSetId, String feature) throws ClientProtocolException, IOException {
 		if (modelType == ModelType.ARIMA) {
 			return createArimaModel(dataSetId, feature);
+		}
+		
+		return "";
+	}
+	
+	public String createModel(ModelType modelType, DataSetDTO dataset) throws ClientProtocolException, IOException {
+		if (modelType == ModelType.ARIMA) {
+			return this.createArimaModel(dataset);
 		}
 		
 		return "";
@@ -173,6 +254,44 @@ public class S0narService {
 		return createModelResponse.getId();
 		
 //		return response.getStatusLine().getStatusCode() == HttpStatus.SC_OK;
+	}
+	
+	private String createArimaModel(DataSetDTO dataset) throws ClientProtocolException, IOException {
+		CreateModelBodyDTO createModelBody = new CreateModelBodyDTO();
+		createModelBody.type = ModelType.ARIMA;
+		createModelBody.index = dataset.getDescriptors().getIndex();
+		createModelBody.indexSchema = dataset.getDescriptors().getIndexSchema();
+		createModelBody.targetFeature = dataset.getDescriptors().getTargetFeature();
+		createModelBody.hyperParameters.minElements = "50";
+				
+		Gson gson = new Gson();
+		LOG.info(gson.toJson(createModelBody).toString());
+		
+		StringEntity requestBody = new StringEntity(
+			gson.toJson(createModelBody).toString(),
+			ContentType.APPLICATION_JSON
+		);
+		
+		CloseableHttpClient client = HttpClients.createDefault();
+		
+		HttpEntityEnclosingRequestBase request = null;
+		
+		request = new HttpPost(this.apiUrl + "/anomalies/" + dataset.getId() + "/model");
+		request.setHeader("x-api-key", apiKey);
+		request.setEntity(requestBody);
+				
+		HttpResponse response = client.execute(request);
+		
+		LOG.info(response.toString());
+		
+		ModelDTO createModelResponse = gson.fromJson(
+			EntityUtils.toString(response.getEntity()),
+			ModelDTO.class
+		);
+		
+		LOG.info(createModelResponse.getId());
+		
+		return createModelResponse.getId();
 	}
 	
 	public boolean trainModel(String modelId) throws ClientProtocolException, IOException {
@@ -227,18 +346,22 @@ public class S0narService {
 		GsonBuilder gsonBuilder = new GsonBuilder();
 		gsonBuilder.registerTypeAdapter(AnomalyDTO.class, new AnomalyDeserializer());
 		
-		Gson gson = gsonBuilder.create();
+		try {
 		
-		LOG.info("Parsing response body");
+			Gson gson = gsonBuilder.create();
+			
+			AnomaliesReportDTO[] anomalyReports = gson.fromJson(
+					EntityUtils.toString(response.getEntity()),
+				AnomaliesReportDTO[].class
+			);
+			
+			LOG.info("Anomaly reports got: " + anomalyReports.toString());
 		
-		AnomaliesReportDTO[] anomaliesReport = gson.fromJson(
-			EntityUtils.toString(response.getEntity()),
-			AnomaliesReportDTO[].class
-		);
-		
-		LOG.info("Sending response");
-		
-		return anomaliesReport[0];
+			return anomalyReports[0];
+		} catch (Exception e) {
+			LOG.log(Level.SEVERE, e.getMessage(), e);
+			throw e;
+		}
 	}
 	
 	private class AnomalyDeserializer implements JsonDeserializer<AnomalyDTO> {
@@ -248,10 +371,21 @@ public class S0narService {
 				throws JsonParseException {
 			JsonObject anomalyJson = json.getAsJsonObject();
 			
+			LOG.fine("Parsing JSON anomaly " + anomalyJson);
+			
 			AnomalyDTO anomaly = new AnomalyDTO();
 			
-			anomaly.setDate(anomalyJson.get("date").getAsString());
-			anomalyJson.remove("date");
+			JsonElement jsonDate = anomalyJson.get("date");
+			if (jsonDate != null) {
+				anomaly.setDate(jsonDate.getAsString());
+				anomalyJson.remove("date");
+			}
+			
+			JsonElement jsonTimestamp = anomalyJson.get("timestamp");
+			if (jsonTimestamp != null) {
+				anomaly.setTimestamp(Long.parseLong(jsonTimestamp.getAsString()));
+				anomalyJson.remove("timestamp");
+			}
 			
 			anomaly.setDistance(anomalyJson.get("distance").getAsDouble());
 			anomalyJson.remove("distance");
