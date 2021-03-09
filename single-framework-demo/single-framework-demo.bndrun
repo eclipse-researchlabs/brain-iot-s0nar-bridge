@@ -2,6 +2,11 @@ index: target/index.xml;name="single-framework-demo"
 
 -standalone: ${index}
 
+-runproperties: \
+	logback.configurationFile=file:./logback.xml, \
+	org.osgi.framework.bootdelegation=org.xml.sax, \
+	felix.log.level=3
+
 -runrequires: \
 	osgi.identity;filter:='(osgi.identity=com.improvingmetrics.brain.iot.s0nar.bridge.s0nar-bridge.impl)',\
 	bnd.identity;id='com.improvingmetrics.brain.iot.s0nar.bridge.receiver.impl',\

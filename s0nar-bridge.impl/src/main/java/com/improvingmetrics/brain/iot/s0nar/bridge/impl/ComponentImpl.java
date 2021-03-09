@@ -6,14 +6,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Timer;
 
-import org.apache.http.ParseException;
 import org.apache.http.client.ClientProtocolException;
 import org.eclipse.sensinact.brainiot.cwi.api.AnomaliesDetectionMessage;
 import org.eclipse.sensinact.brainiot.cwi.api.AnomalyDetectionMessage;
@@ -30,8 +24,15 @@ import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.AttributeType;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.google.gson.JsonSyntaxException;
+import com.improvingmetrics.brain.iot.s0nar.service.AnomaliesReportDTO;
+import com.improvingmetrics.brain.iot.s0nar.service.AnomalyDTO;
+import com.improvingmetrics.brain.iot.s0nar.service.DataSetDTO;
+import com.improvingmetrics.brain.iot.s0nar.service.DataSetDescriptorsDTO;
+import com.improvingmetrics.brain.iot.s0nar.service.ModelType;
+import com.improvingmetrics.brain.iot.s0nar.service.S0narService;
 
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.BrainIoTEvent;
@@ -48,10 +49,11 @@ import eu.brain.iot.eventing.api.SmartBehaviour;
 )
 @Designate(ocd = ComponentImpl.Config.class)
 public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
-	private static final Logger LOG = Logger.getLogger(ComponentImpl.class.getName());
-	private final Map<String, String> SERVER_TO_DS_MAP = new HashMap<String, String>();
+	private static final Logger LOG = LoggerFactory.getLogger(ComponentImpl.class);
 	
-	private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
+	private final DeviceStatusManager deviceStatusManager = new DeviceStatusManager();
+	
+	private final Timer timer = new Timer();
 	
 	private Config config;
 	
@@ -59,8 +61,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	private EventBus eventBus;
 	
 	private S0narService s0narService;
-	
-	private long lastAnomalyNotificationTS = 0l;
 	
 	@ObjectClassDefinition(
             name = "s0nar bridge",
@@ -83,17 +83,17 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
         
         @AttributeDefinition(
     		type = AttributeType.INTEGER,
-            name = "Initial polling rate (s)",
-            description = "The number of seconds to request a model state update from the server"
+            name = "Initial polling delay (s)",
+            description = "The number of seconds to wait before requesting a model state update from the server"
         )
-        int initialUpdateRateSecs() default 10;
+        int modelStatusUpdateDelay() default 10;
         
         @AttributeDefinition(
     		type = AttributeType.INTEGER,
-            name = "Max polling rate(s)",
-            description = "The max number of seconds to request a model state update from the server"
+            name = "Polling period (s)",
+            description = "The number of seconds to request a model state update from the server while training"
         )
-        int maxUpdateRateSecs() default 180;
+        int modelStatusUpdatePeriod() default 60;
         
         @AttributeDefinition(
     		type = AttributeType.STRING,
@@ -105,18 +105,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	
 	public ComponentImpl() {}
 	
-	private void digestDataSetMapping(String mapping) {
-		if (mapping != null && !mapping.isEmpty()) {
-			String[] relations = mapping.split(",");
-			
-			for (String relation : relations) {
-				String[] relationComponents = relation.split(":");
-				
-				this.SERVER_TO_DS_MAP.put(relationComponents[0], relationComponents[1]);
-			}
-		}
-	}
-	
 	@Activate
 	void activate(Config config) {
 		LOG.info("S0nar bridge activated");
@@ -127,7 +115,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
     		this.config.s0narApiKey()
 		);
 	    
-	    this.digestDataSetMapping(this.config.preloadedDataSetMapping());
+	    this.deviceStatusManager.configure(this.config.preloadedDataSetMapping());
     }
 
     @Modified
@@ -139,12 +127,12 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
     		this.config.s0narApiKey()
 		);
         
-        this.digestDataSetMapping(this.config.preloadedDataSetMapping());
+        this.deviceStatusManager.configure(this.config.preloadedDataSetMapping());
     }
 
 	@Deactivate
 	void stop() {
-		worker.shutdown();
+		timer.cancel();
 	}
 	
 	@Override
@@ -157,10 +145,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		}
 	}
 	
-	private String getDataSetIdForDevice(String readerId) {
-		return this.SERVER_TO_DS_MAP.get(readerId);
-	}
-	
 	private String convertMilisToSchema(long milis) {
 		OffsetDateTime dateTime = OffsetDateTime.ofInstant(
 			Instant.ofEpochMilli(milis),
@@ -169,50 +153,53 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss");
 		
-		LOG.info("date:" + dateTime.format(formatter));
+		LOG.debug("date:" + dateTime.format(formatter));
 		
 		return dateTime.format(formatter);
 	}
 	
-	private void notifyWhenModelTrained(
-		String feature,
+	private void waitForModelToBeTrained(
 		String modelId,
-		int updateRateSec,
-		int maxUpdateRateSec
-	)throws JsonSyntaxException, ParseException, IOException {
-		this.notifyWhenModelTrained(feature, modelId, updateRateSec, maxUpdateRateSec, 1);
+		S0narService s0narService,
+		Runnable callback
+	) {
+		timer.schedule(
+			new ModelTrainedRecurrentChecker(modelId, s0narService, callback),
+			this.config.modelStatusUpdateDelay() * 1000,
+			this.config.modelStatusUpdatePeriod() * 1000
+		);
 	}
 	
-	private void notifyWhenModelTrained(
-		String feature,
-		String modelId,
-		int updateRateSec,
-		int maxUpdateRateSec,
-		int updateCount
-	) throws JsonSyntaxException, ParseException, IOException {
-		ModelDTO modelDetails = this.s0narService.getModelDetails(modelId);
-		
-		LOG.info("Training status: " + modelDetails.getStatus());
-		
-		if (modelDetails.getStatus() == ModelStatus.TRAINING) {
-			worker.schedule(() -> {
-				try {
-					notifyWhenModelTrained(feature, modelId, Math.min(updateRateSec * updateCount, maxUpdateRateSec), maxUpdateRateSec, updateCount + 1);
-				} catch (Exception e) {
-					LOG.log(Level.SEVERE, e.getMessage(), e);
-					throw new RuntimeException();
-				}
-			}, updateRateSec, TimeUnit.SECONDS);
-		} else if (modelDetails.getStatus() == ModelStatus.FINISHED) {
-			LOG.info("Model " + modelId + " training has finished");
-			
-			AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
-			
-//			this.showAnomalies(anomaliesReport);
-			
-			this.notifyMeasureAnomalies(feature, anomaliesReport);
-		}
-	}
+//	private void waitForModelToBeTrained(
+//		String deviceId,
+//		String modelId
+//	) {
+//		final ScheduledFuture<?> result = this.worker.scheduleAtFixedRate(() -> {
+//			result.cancel(false);
+//			try {
+//				ModelDTO modelDetails = this.s0narService.getModelDetails(modelId);
+//				LOG.info("Training status: " + modelDetails.getStatus());
+//				
+//				if (modelDetails.getStatus() == ModelStatus.FINISHED) {
+//					LOG.info("Model " + modelId + " training has finished");
+//					
+//					AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
+//					
+//	//				this.showAnomalies(anomaliesReport);
+//					
+//					this.notifyMeasureAnomalies(deviceId, anomaliesReport);
+//					
+//					result.cancel(false);
+//				} else if (modelDetails.getStatus() == ModelStatus.FAILED) {
+//					LOG.info("Model " + modelId + " training has failed");
+//					result.cancel(false);
+//				}
+//			} catch (Exception e) {
+//				
+//			}
+//		},
+//		10, 60, TimeUnit.SECONDS);
+//	}
 	
 	private void showAnomalies(AnomaliesReportDTO anomaliesReport) throws ClientProtocolException, IOException {
 		LOG.info("Detected anomalies:");
@@ -221,11 +208,11 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		}
 	}
 	
-	private void notifyMeasureAnomalies(String feature, AnomaliesReportDTO anomaliesReport) {
+	private void notifyMeasureAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
 		boolean newAnomaliesFound = false;
 		
 		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
-			if (anomaly.getTimestamp() > this.lastAnomalyNotificationTS) {
+			if (anomaly.getTimestamp() > this.deviceStatusManager.getLastAnomalyTSForDevice(deviceId)) {
 				AnomaliesDetectionMessage anomaliesMessage = new AnomaliesDetectionMessage();
 				anomaliesMessage.anomalies = new HashMap<String, AnomalyDetectionMessage>();
 		
@@ -234,9 +221,9 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 				anomalyMessage.type = AnomalyType.SPOT.name();
 				anomalyMessage.status = AnomalyStatus.ANOMALY.name();
 				
-				anomaliesMessage.anomalies.put(feature, anomalyMessage);
+				anomaliesMessage.anomalies.put(deviceId, anomalyMessage);
 				
-				this.lastAnomalyNotificationTS = anomaly.getTimestamp();
+				this.deviceStatusManager.setLastAnomalyTSForDevice(deviceId, anomaly.getTimestamp());
 		
 				if (!anomaliesMessage.anomalies.isEmpty()) {
 					newAnomaliesFound = true;
@@ -253,20 +240,20 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	}
 	
 	private void manageMeasuresEvent(MeasuresEvent event) {
-		LOG.info("Digesting MeasuresEvent " + event);
+		LOG.debug("Digesting MeasuresEvent " + event);
 		
 		try {
 			for (Measure measure : event.measures) {
 				uploadMeasure(measure);
 			}
 		} catch (Exception e) {
-			LOG.log(Level.SEVERE, e.getMessage(), e);
+			LOG.error(e.getMessage(), e);
 		}
 	}
 	
 	private void uploadMeasure(Measure measure) throws ClientProtocolException, IOException {
-		LOG.info("Uploading Measure " + measure);
-		String dataSetId = this.getDataSetIdForDevice(measure.deviceId);
+		LOG.debug("Uploading Measure " + measure);
+		String dataSetId = this.deviceStatusManager.getDataSetIdForDevice(measure.deviceId);
 		
 		if (dataSetId == null) {
 			DataSetDTO dataSetDTO = new DataSetDTO();
@@ -286,7 +273,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 				this.parseMeasure(measure, true)
 			);
 			
-			SERVER_TO_DS_MAP.put(measure.deviceId, dataSetId);
+			this.deviceStatusManager.setDataSetIdForDevice(measure.deviceId, dataSetId);
 		} else {
 			dataSetId = this.s0narService.updateDataSet(
 				dataSetId,
@@ -300,7 +287,17 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
 			
 			if (this.s0narService.trainModel(modelId)) {
-				this.notifyWhenModelTrained(measure.deviceId, modelId, this.config.initialUpdateRateSecs(), this.config.maxUpdateRateSecs());
+				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
+					try {
+						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
+						
+		//				this.showAnomalies(anomaliesReport);
+						
+						this.notifyMeasureAnomalies(measure.deviceId, anomaliesReport);
+					} catch (Exception e) {
+						LOG.error(e.getMessage(), e);
+					}
+				});
 			}
 		}
 	}
