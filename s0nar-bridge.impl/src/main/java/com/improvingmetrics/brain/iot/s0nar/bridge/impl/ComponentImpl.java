@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Timer;
 
+import org.apache.http.ParseException;
 import org.apache.http.client.ClientProtocolException;
 import org.eclipse.sensinact.brainiot.cwi.api.AnomaliesDetectionMessage;
 import org.eclipse.sensinact.brainiot.cwi.api.AnomalyDetectionMessage;
@@ -27,6 +28,7 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.JsonSyntaxException;
 import com.improvingmetrics.brain.iot.s0nar.service.AnomaliesReportDTO;
 import com.improvingmetrics.brain.iot.s0nar.service.AnomalyDTO;
 import com.improvingmetrics.brain.iot.s0nar.service.DataSetDTO;
@@ -38,10 +40,11 @@ import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.BrainIoTEvent;
 import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
+import eu.brain.iot.robot.events.BatteryVoltage;
 
 @Component
 @SmartBehaviourDefinition(
-		consumed = {MeasuresEvent.class},
+		consumed = {MeasuresEvent.class, BatteryVoltage.class},
 		filter = "(timestamp=*)",
         author = "Improving Metrics",
         name = "s0nar-bridge Behaviour",
@@ -96,6 +99,13 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
         int modelStatusUpdatePeriod() default 60;
         
         @AttributeDefinition(
+    		type = AttributeType.INTEGER,
+            name = "Minimum event period (s)",
+            description = "The minimum number of seconds between the management of events"
+        )
+        int minEventPeriodSecs() default 60;
+        
+        @AttributeDefinition(
     		type = AttributeType.STRING,
             name = "Preloaded Data Set mapping",
             description = "Configures the preloaded datasets if any. Format: deviceId:dataSetId[,...]"
@@ -141,7 +151,18 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 
 		if (event instanceof MeasuresEvent) {
 			LOG.info("Measures event received: "+ event);
+//			MeasuresEventController eventController = new MeasuresEventController(
+//				this.s0narService,
+//				this.timer,
+//				(MeasuresEvent)event
+//			);
+//			
+//			eventController.manageEvent();
+			
 			this.manageMeasuresEvent((MeasuresEvent)event);
+		} else if (event instanceof BatteryVoltage) {
+			LOG.info("Battery event received: "+ event);
+			this.manageBatteryEvent((BatteryVoltage)event);
 		}
 	}
 	
@@ -169,37 +190,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 			this.config.modelStatusUpdatePeriod() * 1000
 		);
 	}
-	
-//	private void waitForModelToBeTrained(
-//		String deviceId,
-//		String modelId
-//	) {
-//		final ScheduledFuture<?> result = this.worker.scheduleAtFixedRate(() -> {
-//			result.cancel(false);
-//			try {
-//				ModelDTO modelDetails = this.s0narService.getModelDetails(modelId);
-//				LOG.info("Training status: " + modelDetails.getStatus());
-//				
-//				if (modelDetails.getStatus() == ModelStatus.FINISHED) {
-//					LOG.info("Model " + modelId + " training has finished");
-//					
-//					AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
-//					
-//	//				this.showAnomalies(anomaliesReport);
-//					
-//					this.notifyMeasureAnomalies(deviceId, anomaliesReport);
-//					
-//					result.cancel(false);
-//				} else if (modelDetails.getStatus() == ModelStatus.FAILED) {
-//					LOG.info("Model " + modelId + " training has failed");
-//					result.cancel(false);
-//				}
-//			} catch (Exception e) {
-//				
-//			}
-//		},
-//		10, 60, TimeUnit.SECONDS);
-//	}
 	
 	private void showAnomalies(AnomaliesReportDTO anomaliesReport) throws ClientProtocolException, IOException {
 		LOG.info("Detected anomalies:");
@@ -244,14 +234,16 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 		try {
 			for (Measure measure : event.measures) {
-				uploadMeasure(measure);
+				String dataSetId = this.uploadMeasure(measure);
+				
+				this.findMeasureAnomalies(measure.deviceId, dataSetId);				
 			}
 		} catch (Exception e) {
 			LOG.error(e.getMessage(), e);
 		}
 	}
 	
-	private void uploadMeasure(Measure measure) throws ClientProtocolException, IOException {
+	private String uploadMeasure(Measure measure) throws ClientProtocolException, IOException {
 		LOG.debug("Uploading Measure " + measure);
 		String dataSetId = this.deviceStatusManager.getDataSetIdForDevice(measure.deviceId);
 		
@@ -281,6 +273,10 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 			);
 		}
 		
+		return dataSetId;
+	}
+	
+	private void findMeasureAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
 		if (dataSetId != null) {
 			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
 			
@@ -293,7 +289,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 						
 		//				this.showAnomalies(anomaliesReport);
 						
-						this.notifyMeasureAnomalies(measure.deviceId, anomaliesReport);
+						this.notifyMeasureAnomalies(deviceId, anomaliesReport);
 					} catch (Exception e) {
 						LOG.error(e.getMessage(), e);
 					}
@@ -318,5 +314,136 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		stringBuilder.append(System.lineSeparator());
 		
 		return stringBuilder.toString().getBytes();
+	}
+	
+	private void manageBatteryEvent(BatteryVoltage batteryVoltage) {
+		String deviceId = Integer.toString(batteryVoltage.robotID);
+		
+		if (
+			this.deviceStatusManager.getSecsFromLastManagedEventForDevice(deviceId) >=
+			this.config.minEventPeriodSecs()	
+		) {
+			this.deviceStatusManager.resetLastManagedEventTSFromDevice(deviceId);
+			LOG.debug("Digesting BatteryVoltage event " + batteryVoltage);
+			try {
+				String dataSetId = this.uploadBatteryVoltage(batteryVoltage);
+				this.findBatteryVoltageAnomalies(deviceId, dataSetId);
+			} catch (Exception e) {
+				LOG.error(e.getMessage(), e);
+			}
+		} else {
+			LOG.debug(
+				"Minimum of " +
+				this.config.minEventPeriodSecs() +
+				" seconds have not yet elapsed. Ignoring event."
+			);
+		}
+	}
+	
+	private String uploadBatteryVoltage(BatteryVoltage batteryVoltage) throws ClientProtocolException, IOException {
+		LOG.debug("Uploading Battery Voltage measure " + batteryVoltage);
+		String dataSetId = this.deviceStatusManager.getDataSetIdForDevice(Integer.toString(batteryVoltage.robotID));
+		
+		if (dataSetId == null) {
+			DataSetDTO dataSetDTO = new DataSetDTO();
+			dataSetDTO.setName(batteryVoltage.robotID + "_" + System.currentTimeMillis());
+			
+			DataSetDescriptorsDTO dataSetDescriptorsDTO = new DataSetDescriptorsDTO();
+			dataSetDescriptorsDTO.setIndex("index");
+			dataSetDescriptorsDTO.setIndexFrequency("10S");
+			dataSetDescriptorsDTO.setIndexSchema("%Y-%m-%d %H:%M:%S");
+			dataSetDescriptorsDTO.setTargetFeature(Integer.toString(batteryVoltage.robotID));
+			dataSetDescriptorsDTO.setTargetFrequency("10s");
+
+			dataSetDTO.setDescriptors(dataSetDescriptorsDTO);
+			
+			dataSetId = this.s0narService.createDataSet(
+				dataSetDTO,
+				this.parseBatteryVoltage(batteryVoltage, true)
+			);
+			
+			this.deviceStatusManager.setDataSetIdForDevice(
+				Integer.toString(batteryVoltage.robotID),
+				dataSetId
+			);
+		} else {
+			dataSetId = this.s0narService.updateDataSet(
+				dataSetId,
+				this.parseBatteryVoltage(batteryVoltage, false)
+			);
+		}
+		
+		return dataSetId;
+	}
+	
+	private byte[] parseBatteryVoltage(BatteryVoltage batteryVoltage, boolean appendHeader) {
+		StringBuilder stringBuilder = new StringBuilder();
+		
+		if (appendHeader) {
+			stringBuilder.append("index,");
+			stringBuilder.append(batteryVoltage.robotID);
+			stringBuilder.append(System.lineSeparator());
+		}
+		
+		stringBuilder.append(batteryVoltage.index);
+		stringBuilder.append(",");
+		stringBuilder.append(batteryVoltage.target);
+		
+		stringBuilder.append(System.lineSeparator());
+		
+		return stringBuilder.toString().getBytes();
+	}
+	
+	private void findBatteryVoltageAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
+		if (dataSetId != null) {
+			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
+			
+			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
+			
+			if (this.s0narService.trainModel(modelId)) {
+				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
+					try {
+						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
+						
+		//				this.showAnomalies(anomaliesReport);
+						
+						this.notifyBatteryVoltageAnomalies(deviceId, anomaliesReport);
+					} catch (Exception e) {
+						LOG.error(e.getMessage(), e);
+					}
+				});
+			}
+		}
+	}
+	
+	private void notifyBatteryVoltageAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
+		boolean newAnomaliesFound = false;
+		
+		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
+			if (anomaly.getTimestamp() > this.deviceStatusManager.getLastAnomalyTSForDevice(deviceId)) {
+				AnomaliesDetectionMessage anomaliesMessage = new AnomaliesDetectionMessage();
+				anomaliesMessage.anomalies = new HashMap<String, AnomalyDetectionMessage>();
+		
+				AnomalyDetectionMessage anomalyMessage = new AnomalyDetectionMessage();
+				anomalyMessage.timestamp = Long.toString(anomaly.getTimestamp());
+				anomalyMessage.type = AnomalyType.SPOT.name();
+				anomalyMessage.status = AnomalyStatus.ANOMALY.name();
+				
+				anomaliesMessage.anomalies.put(deviceId, anomalyMessage);
+				
+				this.deviceStatusManager.setLastAnomalyTSForDevice(deviceId, anomaly.getTimestamp());
+		
+				if (!anomaliesMessage.anomalies.isEmpty()) {
+					newAnomaliesFound = true;
+					
+					LOG.info("Notifying anomalies: " + anomaliesMessage.anomalies);
+					this.eventBus.deliver(anomaliesMessage);
+				}
+			}
+		}
+		
+		if (!newAnomaliesFound) {
+			LOG.info("No new anomalies detected");
+		}
 	}
 }

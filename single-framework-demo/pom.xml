@@ -75,6 +75,10 @@
             <artifactId>s0nar-bridge.impl</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
+        <dependency>
+			<groupId>eu.brain.iot.service.robotic</groupId>
+			<artifactId>eu.brain.iot.robot.api</artifactId>
+		</dependency>
     </dependencies>
 
     <build>

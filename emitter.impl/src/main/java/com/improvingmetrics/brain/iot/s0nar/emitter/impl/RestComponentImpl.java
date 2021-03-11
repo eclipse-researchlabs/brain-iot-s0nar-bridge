@@ -17,8 +17,12 @@ import org.osgi.service.jaxrs.whiteboard.propertytypes.JaxrsResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.improvingmetrics.brain.iot.s0nar.emitter.impl.MeasureDTO;
+import com.improvingmetrics.brain.iot.s0nar.emitter.impl.VoltageDTO;
+
 import eu.brain.iot.eventing.annotation.SmartBehaviourDefinition;
 import eu.brain.iot.eventing.api.EventBus;
+import eu.brain.iot.robot.events.BatteryVoltage;
 
 @Component(service=RestComponentImpl.class)
 @JaxrsResource
@@ -55,6 +59,27 @@ public class RestComponentImpl {
     	if (!measuresEvent.measures.isEmpty()) {
     		this.eventBus.deliver(measuresEvent);
     		LOG.info("Delivered message: " + measuresEvent);
+    	}
+    	
+    	return Response.status(Response.Status.OK).build();
+    }
+    
+    @Path("battery-demo")
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces()
+    public Response triggerBatteryEvent(VoltageDTO[] measures) {
+
+    	for (VoltageDTO voltageMeasure : measures) {
+	    	BatteryVoltage batteryVoltageEvent = new BatteryVoltage();
+	    	batteryVoltageEvent.robotID = Integer.parseInt(voltageMeasure.deviceId);
+	    	batteryVoltageEvent.index = voltageMeasure.index;
+//	    	batteryVoltageEvent.index = Long.toString(System.currentTimeMillis());
+	    	batteryVoltageEvent.target = voltageMeasure.value;
+	    	
+	    	LOG.debug("emitting battery event:" + batteryVoltageEvent);
+	    	
+	    	this.eventBus.deliver(batteryVoltageEvent);
     	}
     	
     	return Response.status(Response.Status.OK).build();

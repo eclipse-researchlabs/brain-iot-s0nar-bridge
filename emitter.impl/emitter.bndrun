@@ -35,4 +35,5 @@
 	org.osgi.util.pushstream;version='[1.0.0,1.0.1)',\
 	slf4j.api;version='[1.7.25,1.7.26)',\
 	com.improvingmetrics.brain.iot.s0nar.bridge.emitter.impl;version='[0.0.1,0.0.2)',\
-	org.eclipse.sensinact.brainiot.medusa.critical-water-infrastructure-api;version='[1.0.0,1.0.1)'
+	org.eclipse.sensinact.brainiot.medusa.critical-water-infrastructure-api;version='[1.0.0,1.0.1)',\
+	eu.brain.iot.service.robotic.eu.brain.iot.robot.api;version='[0.0.2,0.0.3)'

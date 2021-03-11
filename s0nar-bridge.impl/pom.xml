@@ -61,6 +61,11 @@
 			<groupId>org.eclipse.sensinact.brainiot.medusa</groupId>
 			<artifactId>critical-water-infrastructure-api</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>eu.brain.iot.service.robotic</groupId>
+			<artifactId>eu.brain.iot.robot.api</artifactId>
+			<scope>provided</scope>
+		</dependency>
      </dependencies>
 
     <build>
