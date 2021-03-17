@@ -234,9 +234,21 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 		try {
 			for (Measure measure : event.measures) {
-				String dataSetId = this.uploadMeasure(measure);
-				
-				this.findMeasureAnomalies(measure.deviceId, dataSetId);				
+				if (
+					this.deviceStatusManager.getSecsFromLastManagedEventForDevice(measure.deviceId) >=
+					this.config.minEventPeriodSecs()
+				) {
+					this.deviceStatusManager.resetLastManagedEventTSFromDevice(measure.deviceId);
+					String dataSetId = this.uploadMeasure(measure);
+					
+					this.findMeasureAnomalies(measure.deviceId, dataSetId);
+				} else {
+					LOG.debug(
+						"Minimum of " +
+						this.config.minEventPeriodSecs() +
+						" seconds have not yet elapsed. Ignoring event."
+					);
+				}
 			}
 		} catch (Exception e) {
 			LOG.error(e.getMessage(), e);
