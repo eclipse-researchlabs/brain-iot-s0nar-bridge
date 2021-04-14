@@ -103,7 +103,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
             name = "Minimum event period (s)",
             description = "The minimum number of seconds between the management of events"
         )
-        int minEventPeriodSecs() default 60;
+        int minEventPeriodSecs() default 0;
         
         @AttributeDefinition(
     		type = AttributeType.STRING,
@@ -241,7 +241,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 					this.deviceStatusManager.resetLastManagedEventTSFromDevice(measure.deviceId);
 					String dataSetId = this.uploadMeasure(measure);
 					
-					this.findMeasureAnomalies(measure.deviceId, dataSetId);
+					this.findAnomalies(measure.deviceId, dataSetId);
 				} else {
 					LOG.debug(
 						"Minimum of " +
@@ -339,7 +339,8 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 			LOG.debug("Digesting BatteryVoltage event " + batteryVoltage);
 			try {
 				String dataSetId = this.uploadBatteryVoltage(batteryVoltage);
-				this.findBatteryVoltageAnomalies(deviceId, dataSetId);
+
+				this.findAnomalies(deviceId, dataSetId);
 			} catch (Exception e) {
 				LOG.error(e.getMessage(), e);
 			}
@@ -429,6 +430,59 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	}
 	
 	private void notifyBatteryVoltageAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
+		boolean newAnomaliesFound = false;
+		
+		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
+			if (anomaly.getTimestamp() > this.deviceStatusManager.getLastAnomalyTSForDevice(deviceId)) {
+				AnomaliesDetectionMessage anomaliesMessage = new AnomaliesDetectionMessage();
+				anomaliesMessage.anomalies = new HashMap<String, AnomalyDetectionMessage>();
+		
+				AnomalyDetectionMessage anomalyMessage = new AnomalyDetectionMessage();
+				anomalyMessage.timestamp = Long.toString(anomaly.getTimestamp());
+				anomalyMessage.type = AnomalyType.SPOT.name();
+				anomalyMessage.status = AnomalyStatus.ANOMALY.name();
+				
+				anomaliesMessage.anomalies.put(deviceId, anomalyMessage);
+				
+				this.deviceStatusManager.setLastAnomalyTSForDevice(deviceId, anomaly.getTimestamp());
+		
+				if (!anomaliesMessage.anomalies.isEmpty()) {
+					newAnomaliesFound = true;
+					
+					LOG.info("Notifying anomalies: " + anomaliesMessage.anomalies);
+					this.eventBus.deliver(anomaliesMessage);
+				}
+			}
+		}
+		
+		if (!newAnomaliesFound) {
+			LOG.info("No new anomalies detected");
+		}
+	}
+	
+	private void findAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
+		if (dataSetId != null) {
+			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
+			
+			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
+			
+			if (this.s0narService.trainModel(modelId)) {
+				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
+					try {
+						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
+						
+		//				this.showAnomalies(anomaliesReport);
+						
+						this.notifyAnomalies(deviceId, anomaliesReport);
+					} catch (Exception e) {
+						LOG.error(e.getMessage(), e);
+					}
+				});
+			}
+		}
+	}
+	
+	private void notifyAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
 		boolean newAnomaliesFound = false;
 		
 		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
