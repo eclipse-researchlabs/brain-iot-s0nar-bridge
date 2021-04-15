@@ -16,6 +16,9 @@ import org.eclipse.sensinact.brainiot.cwi.api.AnomalyStatus;
 import org.eclipse.sensinact.brainiot.cwi.api.AnomalyType;
 import org.eclipse.sensinact.brainiot.cwi.api.Measure;
 import org.eclipse.sensinact.brainiot.cwi.api.MeasuresEvent;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceReference;
+import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
@@ -42,7 +45,7 @@ import eu.brain.iot.eventing.api.EventBus;
 import eu.brain.iot.eventing.api.SmartBehaviour;
 import eu.brain.iot.robot.events.BatteryVoltage;
 
-@Component
+@Component(immediate=true)
 @SmartBehaviourDefinition(
 		consumed = {MeasuresEvent.class, BatteryVoltage.class},
 		filter = "(timestamp=*)",
@@ -60,10 +63,9 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	
 	private Config config;
 	
-	@Reference
-	private EventBus eventBus;
-	
 	private S0narService s0narService;
+
+	private BundleContext bundleContext;
 	
 	@ObjectClassDefinition(
             name = "s0nar bridge",
@@ -116,7 +118,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	public ComponentImpl() {}
 	
 	@Activate
-	void activate(Config config) {
+	void activate(ComponentContext context, Config config) {
 		LOG.info("S0nar bridge activated");
 	    this.config = config;
 	    
@@ -124,19 +126,20 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
     		this.config.s0narApiUrl(),
     		this.config.s0narApiKey()
 		);
-	    
+	    this.bundleContext = context.getBundleContext();
 	    this.deviceStatusManager.configure(this.config.preloadedDataSetMapping());
     }
 
     @Modified
-    void modify(Config config) {
+    void modify(ComponentContext context, Config config) {
         this.config = config;
         
         this.s0narService = new S0narService(
     		this.config.s0narApiUrl(),
     		this.config.s0narApiKey()
 		);
-        
+
+	    this.bundleContext = context.getBundleContext();
         this.deviceStatusManager.configure(this.config.preloadedDataSetMapping());
     }
 
@@ -163,6 +166,17 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		} else if (event instanceof BatteryVoltage) {
 			LOG.info("Battery event received: "+ event);
 			this.manageBatteryEvent((BatteryVoltage)event);
+		}
+	}
+	
+	private void deliver(BrainIoTEvent event) {
+		try {
+			LOG.info("Notifying  : " + event);
+			ServiceReference<EventBus> reference = this.bundleContext.getServiceReference(EventBus.class);
+			EventBus eventBus = this.bundleContext.getService(reference);
+			eventBus.deliver(event);
+		} catch(Exception e) {
+			LOG.error(e.getMessage(),e);
 		}
 	}
 	
@@ -217,9 +231,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 				if (!anomaliesMessage.anomalies.isEmpty()) {
 					newAnomaliesFound = true;
-					
-					LOG.info("Notifying anomalies: " + anomaliesMessage.anomalies);
-					this.eventBus.deliver(anomaliesMessage);
+					deliver(anomaliesMessage);
 				}
 			}
 		}
@@ -448,9 +460,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 				if (!anomaliesMessage.anomalies.isEmpty()) {
 					newAnomaliesFound = true;
-					
-					LOG.info("Notifying anomalies: " + anomaliesMessage.anomalies);
-					this.eventBus.deliver(anomaliesMessage);
+					deliver(anomaliesMessage);
 				}
 			}
 		}
@@ -501,9 +511,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		
 				if (!anomaliesMessage.anomalies.isEmpty()) {
 					newAnomaliesFound = true;
-					
-					LOG.info("Notifying anomalies: " + anomaliesMessage.anomalies);
-					this.eventBus.deliver(anomaliesMessage);
+					deliver(anomaliesMessage);
 				}
 			}
 		}
