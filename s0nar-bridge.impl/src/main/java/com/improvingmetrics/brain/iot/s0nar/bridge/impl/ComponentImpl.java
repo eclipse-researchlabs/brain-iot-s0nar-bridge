@@ -109,10 +109,17 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
         
         @AttributeDefinition(
     		type = AttributeType.STRING,
-            name = "Preloaded Data Set mapping",
+            name = "Preloaded dataset mapping",
             description = "Configures the preloaded datasets if any. Format: deviceId:dataSetId[,...]"
         )
         String preloadedDataSetMapping();// default "cft002:8fcf28f6-01d5-486c-8848-6ea4e5a22912";
+        
+        @AttributeDefinition(
+    		type = AttributeType.DOUBLE,
+            name = "Anomaly detection threshold",
+            description = "The threshold of the anomaly detection ([1..4])"
+        )
+        int anomalyDetectionThreshold() default 3;
     }
 	
 	public ComponentImpl() {}
@@ -154,13 +161,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 
 		if (event instanceof MeasuresEvent) {
 			LOG.info("Measures event received: "+ event);
-//			MeasuresEventController eventController = new MeasuresEventController(
-//				this.s0narService,
-//				this.timer,
-//				(MeasuresEvent)event
-//			);
-//			
-//			eventController.manageEvent();
 			
 			this.manageMeasuresEvent((MeasuresEvent)event);
 		} else if (event instanceof BatteryVoltage) {
@@ -171,7 +171,7 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	
 	private void deliver(BrainIoTEvent event) {
 		try {
-			LOG.info("Notifying  : " + event);
+			LOG.info("Notifying: " + event);
 			ServiceReference<EventBus> reference = this.bundleContext.getServiceReference(EventBus.class);
 			EventBus eventBus = this.bundleContext.getService(reference);
 			eventBus.deliver(event);
@@ -206,38 +206,9 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 	}
 	
 	private void showAnomalies(AnomaliesReportDTO anomaliesReport) throws ClientProtocolException, IOException {
-		LOG.info("Detected anomalies:");
+		LOG.trace("Detected anomalies:");
 		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
-			LOG.info(anomaly.toString());
-		}
-	}
-	
-	private void notifyMeasureAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
-		boolean newAnomaliesFound = false;
-		
-		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
-			if (anomaly.getTimestamp() > this.deviceStatusManager.getLastAnomalyTSForDevice(deviceId)) {
-				AnomaliesDetectionMessage anomaliesMessage = new AnomaliesDetectionMessage();
-				anomaliesMessage.anomalies = new HashMap<String, AnomalyDetectionMessage>();
-		
-				AnomalyDetectionMessage anomalyMessage = new AnomalyDetectionMessage();
-				anomalyMessage.timestamp = Long.toString(anomaly.getTimestamp());
-				anomalyMessage.type = AnomalyType.SPOT.name();
-				anomalyMessage.status = AnomalyStatus.ANOMALY.name();
-				
-				anomaliesMessage.anomalies.put(deviceId, anomalyMessage);
-				
-				this.deviceStatusManager.setLastAnomalyTSForDevice(deviceId, anomaly.getTimestamp());
-		
-				if (!anomaliesMessage.anomalies.isEmpty()) {
-					newAnomaliesFound = true;
-					deliver(anomaliesMessage);
-				}
-			}
-		}
-		
-		if (!newAnomaliesFound) {
-			LOG.info("No new anomalies detected");
+			LOG.trace(anomaly.toString());
 		}
 	}
 	
@@ -298,28 +269,6 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		}
 		
 		return dataSetId;
-	}
-	
-	private void findMeasureAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
-		if (dataSetId != null) {
-			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
-			
-			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
-			
-			if (this.s0narService.trainModel(modelId)) {
-				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
-					try {
-						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
-						
-		//				this.showAnomalies(anomaliesReport);
-						
-						this.notifyMeasureAnomalies(deviceId, anomaliesReport);
-					} catch (Exception e) {
-						LOG.error(e.getMessage(), e);
-					}
-				});
-			}
-		}
 	}
 	
 	private byte[] parseMeasure(Measure measure, boolean appendHeader) {
@@ -419,69 +368,18 @@ public class ComponentImpl implements SmartBehaviour<BrainIoTEvent> {
 		return stringBuilder.toString().getBytes();
 	}
 	
-	private void findBatteryVoltageAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
-		if (dataSetId != null) {
-			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
-			
-			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
-			
-			if (this.s0narService.trainModel(modelId)) {
-				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
-					try {
-						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
-						
-		//				this.showAnomalies(anomaliesReport);
-						
-						this.notifyBatteryVoltageAnomalies(deviceId, anomaliesReport);
-					} catch (Exception e) {
-						LOG.error(e.getMessage(), e);
-					}
-				});
-			}
-		}
-	}
-	
-	private void notifyBatteryVoltageAnomalies(String deviceId, AnomaliesReportDTO anomaliesReport) {
-		boolean newAnomaliesFound = false;
-		
-		for (AnomalyDTO anomaly : anomaliesReport.getAnomalies()) {
-			if (anomaly.getTimestamp() > this.deviceStatusManager.getLastAnomalyTSForDevice(deviceId)) {
-				AnomaliesDetectionMessage anomaliesMessage = new AnomaliesDetectionMessage();
-				anomaliesMessage.anomalies = new HashMap<String, AnomalyDetectionMessage>();
-		
-				AnomalyDetectionMessage anomalyMessage = new AnomalyDetectionMessage();
-				anomalyMessage.timestamp = Long.toString(anomaly.getTimestamp());
-				anomalyMessage.type = AnomalyType.SPOT.name();
-				anomalyMessage.status = AnomalyStatus.ANOMALY.name();
-				
-				anomaliesMessage.anomalies.put(deviceId, anomalyMessage);
-				
-				this.deviceStatusManager.setLastAnomalyTSForDevice(deviceId, anomaly.getTimestamp());
-		
-				if (!anomaliesMessage.anomalies.isEmpty()) {
-					newAnomaliesFound = true;
-					deliver(anomaliesMessage);
-				}
-			}
-		}
-		
-		if (!newAnomaliesFound) {
-			LOG.info("No new anomalies detected");
-		}
-	}
-	
 	private void findAnomalies(String deviceId, String dataSetId) throws JsonSyntaxException, ParseException, IOException {
 		if (dataSetId != null) {
 			DataSetDTO dataSet = this.s0narService.getDataSet(dataSetId);
 			
-			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet);
+			String modelId = this.s0narService.createModel(ModelType.ARIMA, dataSet, this.config.anomalyDetectionThreshold());
 			
 			if (this.s0narService.trainModel(modelId)) {
 				this.waitForModelToBeTrained(modelId, this.s0narService, () -> {
 					try {
 						AnomaliesReportDTO anomaliesReport = this.s0narService.getAnomaliesReportForModel(modelId);
 						
-		//				this.showAnomalies(anomaliesReport);
+						this.showAnomalies(anomaliesReport);
 						
 						this.notifyAnomalies(deviceId, anomaliesReport);
 					} catch (Exception e) {

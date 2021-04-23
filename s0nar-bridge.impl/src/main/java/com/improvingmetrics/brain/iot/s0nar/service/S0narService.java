@@ -191,21 +191,22 @@ public class S0narService {
 		return dataSetDetails;
 	}
 	
-	public String createModel(ModelType modelType, DataSetDTO dataset) throws ClientProtocolException, IOException {
+	public String createModel(ModelType modelType, DataSetDTO dataset, double anomalyDetectionThreshold) throws ClientProtocolException, IOException {
 		if (modelType == ModelType.ARIMA) {
-			return this.createArimaModel(dataset);
+			return this.createArimaModel(dataset, anomalyDetectionThreshold);
 		}
 		
 		return null;
 	}
 	
-	private String createArimaModel(DataSetDTO dataset) throws ClientProtocolException, IOException {
+	private String createArimaModel(DataSetDTO dataset, double anomalyDetectionThreshold) throws ClientProtocolException, IOException {
 		CreateModelBodyDTO createModelBody = new CreateModelBodyDTO();
 		createModelBody.type = ModelType.ARIMA;
 		createModelBody.index = dataset.getDescriptors().getIndex();
 		createModelBody.indexSchema = dataset.getDescriptors().getIndexSchema();
 		createModelBody.targetFeature = dataset.getDescriptors().getTargetFeature();
 		createModelBody.hyperParameters.minElements = "50";
+		createModelBody.hyperParameters.threshold = anomalyDetectionThreshold;
 				
 		Gson gson = new Gson();
 		LOG.debug(gson.toJson(createModelBody).toString());

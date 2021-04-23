@@ -7,7 +7,9 @@ import com.google.gson.annotations.SerializedName;
 public class CreateModelBodyDTO extends DTO {
 	public class HyperParameters {
 		@SerializedName(value = "min_elements")
-		public String minElements; 
+		public String minElements;
+		
+		public double threshold;
 	}
 	
 	public ModelType type;
