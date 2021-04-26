@@ -7,13 +7,13 @@ import org.osgi.dto.DTO;
 import com.google.gson.annotations.SerializedName;
 
 public class AnomaliesReportDTO extends DTO {
-	@SerializedName(value = "_id")
+	@SerializedName("_id")
 	private String id;
 	
-	@SerializedName(value = "creation_date")
+	@SerializedName("creation_date")
 	private String creationDate;
 	
-	@SerializedName(value = "model")
+	@SerializedName("model")
 	private String modelId;
 	
 	private List<AnomalyDTO> anomalies;

@@ -3,6 +3,13 @@ package com.improvingmetrics.brain.iot.s0nar.service;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Map.Entry;
 import java.util.Set;
 
@@ -278,8 +285,10 @@ public class S0narService {
 		request.setHeader("x-api-key", apiKey);
 		
 		HttpResponse response = client.execute(request);
+		String responseBody = EntityUtils.toString(response.getEntity());
 		
 		LOG.debug(response.toString());
+		LOG.debug(responseBody);
 		
 		GsonBuilder gsonBuilder = new GsonBuilder();
 		gsonBuilder.registerTypeAdapter(AnomalyDTO.class, new AnomalyDeserializer());
@@ -289,11 +298,11 @@ public class S0narService {
 			Gson gson = gsonBuilder.create();
 			
 			AnomaliesReportDTO[] anomalyReports = gson.fromJson(
-					EntityUtils.toString(response.getEntity()),
+				responseBody,
 				AnomaliesReportDTO[].class
 			);
 			
-			LOG.info("Anomaly reports got: " + anomalyReports.toString());
+			LOG.info("Anomaly reports got: " + Arrays.toString(anomalyReports));
 		
 			return anomalyReports[0];
 		} catch (Exception e) {
@@ -325,6 +334,12 @@ public class S0narService {
 				anomalyJson.remove("timestamp");
 			}
 			
+			JsonElement jsonIndex = anomalyJson.get("index");
+			if (jsonIndex != null) {
+				anomaly.setTimestamp(convertSchemaToMilis(jsonIndex.getAsString()));
+				anomalyJson.remove("index");
+			}
+			
 			anomaly.setDistance(anomalyJson.get("distance").getAsDouble());
 			anomalyJson.remove("distance");
 			
@@ -344,4 +359,9 @@ public class S0narService {
 		
 	}
 	
+	private Long convertSchemaToMilis(String date) {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss");
+			
+		return LocalDateTime.parse(date, formatter).atOffset(ZoneOffset.UTC).toInstant().toEpochMilli();
+	}
 }
